@@ -11,7 +11,7 @@ import (
 
 var (
 	BufferSize = 512
-	WSPort     = ":8080"
+	WSPort     = ":8000"
 )
 
 type Client struct {
@@ -30,14 +30,39 @@ func NewClient(conn *websocket.Conn) *Client {
 }
 
 type Server struct {
-	Clients []*Client
-	mu      *sync.RWMutex
+	Clients       map[string]*Client
+	JoinServerCh  chan *Client
+	LeaveServerCh chan *Client
+	mu            *sync.RWMutex
 }
 
 func NewServer() *Server {
 	return &Server{
-		Clients: []*Client{},
-		mu:      new(sync.RWMutex),
+		Clients:       map[string]*Client{},
+		JoinServerCh:  make(chan *Client, 64),
+		LeaveServerCh: make(chan *Client, 64),
+		mu:            new(sync.RWMutex),
+	}
+}
+
+func (s *Server) clientJoiningServer(c *Client) {
+	s.Clients[c.ID] = c
+	log.Printf("Client joining...\nClientID: %s\n", c.ID)
+}
+
+func (s *Server) clientLeavingServer(c *Client) {
+	delete(s.Clients, c.ID)
+	log.Printf("Client leaving...\nClientID: %s\n", c.ID)
+}
+
+func (s *Server) AcceptLoop() {
+	for {
+		select {
+		case c := <-s.JoinServerCh:
+			s.clientJoiningServer(c)
+		case c := <-s.LeaveServerCh:
+			s.clientLeavingServer(c)
+		}
 	}
 }
 
@@ -58,12 +83,18 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 
 	// Create client and add it to server
 	client := NewClient(conn)
-	s.Clients = append(s.Clients, client) // FIX: race condition
+	s.JoinServerCh <- client
+}
+
+func wsServerStart() {
+	s := NewServer()
+	go s.AcceptLoop()
+	http.HandleFunc("/", s.handleWS)
+	log.Println("Starting server...")
+
+	log.Fatal(http.ListenAndServe(WSPort, nil))
 }
 
 func main() {
-	s := NewServer()
-	http.HandleFunc("/", s.handleWS)
-
-	log.Fatal(http.ListenAndServe(WSPort, nil))
+	wsServerStart()
 }
