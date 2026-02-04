@@ -10,7 +10,8 @@ import (
 )
 
 var (
-	WSPort = ":8080"
+	BufferSize = 512
+	WSPort     = ":8080"
 )
 
 type Client struct {
@@ -40,11 +41,29 @@ func NewServer() *Server {
 	}
 }
 
-func handleWS(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
+	// Upgrade HTTP request to WS
+	upgrader := websocket.Upgrader{
+		ReadBufferSize:  BufferSize,
+		WriteBufferSize: BufferSize,
+		CheckOrigin: func(r *http.Request) bool {
+			return true
+		},
+	}
+	conn, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		log.Printf("Error upgrading HTTP connection to WS: %s\n", err)
+		return
+	}
+
+	// Create client and add it to server
+	client := NewClient(conn)
+	s.Clients = append(s.Clients, client) // FIX: race condition
 }
 
 func main() {
-	http.HandleFunc("/", handleWS)
+	s := NewServer()
+	http.HandleFunc("/", s.handleWS)
 
 	log.Fatal(http.ListenAndServe(WSPort, nil))
 }

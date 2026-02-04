@@ -3,7 +3,7 @@
 ## TODO
 
 - [X] Build HTTP server
-- [ ] Upgrade from HTTP to WS when client connects
+- [X] Upgrade from HTTP to WS when client connects
 - [ ] Add newly connected ws to server
 - [ ] Add WS client
 - [ ] Remove client on disconnect
